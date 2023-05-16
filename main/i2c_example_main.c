@@ -44,8 +44,6 @@ static const char *TAG = "i2c-example";
 #define ACK_VAL 0x0                             /*!< I2C ack value */
 #define NACK_VAL 0x1                            /*!< I2C nack value */
 
-#define IS_SLAVE false
-
 SemaphoreHandle_t print_mux = NULL;
 
 /**
@@ -169,16 +167,11 @@ static void disp_buf(uint8_t *buf, int len)
  * @param data_rd
  * @param task_idx
  */
-void master_read_func(uint8_t *data, uint8_t *data_rd, uint32_t task_idx)
+void master_read_func(uint8_t *data_rd)
 {
     // the response from the master_read_slave func
     int master_read_ret;
-    // Write the slave stuff rq
-#if IS_SLAVE
-    size_t d_size = i2c_slave_write_buffer(I2C_SLAVE_NUM, data, RW_TEST_LENGTH, 1000 / portTICK_RATE_MS);
-#else
     size_t d_size = 128;
-#endif
     if (d_size == 0)
     {
         ESP_LOGW(TAG, "i2c slave tx buffer full");
@@ -195,19 +188,14 @@ void master_read_func(uint8_t *data, uint8_t *data_rd, uint32_t task_idx)
     else if (master_read_ret == ESP_OK)
     {
         printf("*******************\n");
-        printf("TASK[%d]  MASTER READ FROM SLAVE\n", task_idx);
+        printf("MASTER READ FROM SLAVE\n");
         printf("*******************\n");
-#if IS_SLAVE
-        printf("====TASK[%d] Slave buffer data ====\n", task_idx);
-        disp_buf(data, d_size);
-#endif
-        printf("====TASK[%d] Master read ====\n", task_idx);
+        printf("==== Master read ====\n");
         disp_buf(data_rd, d_size);
     }
     else
     {
-        ESP_LOGW(TAG, "TASK[%d] %s: Master read slave error, IO not connected...\n",
-                 task_idx, esp_err_to_name(master_read_ret));
+        ESP_LOGW(TAG, " %s: Master read slave error, IO not connected...\n", esp_err_to_name(master_read_ret));
     }
 }
 
@@ -215,36 +203,21 @@ static void i2c_test_task(void *arg)
 {
     int ret;
     uint32_t task_idx = (uint32_t)arg;
-#if !CONFIG_IDF_TARGET_ESP32C3
     int i = 0;
     uint8_t *data = (uint8_t *)malloc(DATA_LENGTH);
     uint8_t *data_wr = (uint8_t *)malloc(DATA_LENGTH);
     uint8_t *data_rd = (uint8_t *)malloc(DATA_LENGTH);
-#endif //! CONFIG_IDF_TARGET_ESP32C3
     int cnt = 0;
     while (1)
     {
         ESP_LOGI(TAG, "TASK[%d] test cnt: %d", task_idx, cnt++);
-        //
-        //   ╔══════════════════════════════════════════════╗
-        // ╔══════════════════════════════════════════════════╗
-        // ║                                                  ║
-        // ║  MASTER CODE                                     ║
-        // ║                                                  ║
-        // ╚══════════════════════════════════════════════════╝
-        //   ╚══════════════════════════════════════════════╝
-        //
+
         // Delay for some time.
         vTaskDelay((DELAY_TIME_BETWEEN_ITEMS_MS * (task_idx + 1)) / portTICK_RATE_MS);
-        // Fill the data array with incrementing numbers.
-        for (i = 0; i < DATA_LENGTH; i++)
-        {
-            data[i] = i;
-        }
 
         // BEGIN THIS THING
         xSemaphoreTake(print_mux, portMAX_DELAY);
-        master_read_func(data, data_rd, task_idx);
+        master_read_func(data_rd);
         xSemaphoreGive(print_mux);
         // END THIS THING
 
