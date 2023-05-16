@@ -115,30 +115,30 @@ static esp_err_t __attribute__((unused)) i2c_master_write_slave(i2c_port_t i2c_n
  * | start | slave_addr + rd_bit + ack | read 1 byte + ack  | read 1 byte + nack | stop |
  * --------|---------------------------|--------------------|--------------------|------|
  */
-static esp_err_t i2c_master_sensor_test(i2c_port_t i2c_num, uint8_t *data_h, uint8_t *data_l)
-{
-    int ret;
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, BH1750_SENSOR_ADDR << 1 | WRITE_BIT, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, BH1750_CMD_START, ACK_CHECK_EN);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-    vTaskDelay(30 / portTICK_RATE_MS);
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, BH1750_SENSOR_ADDR << 1 | READ_BIT, ACK_CHECK_EN);
-    i2c_master_read_byte(cmd, data_h, ACK_VAL);
-    i2c_master_read_byte(cmd, data_l, NACK_VAL);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    return ret;
-}
+// static esp_err_t i2c_master_sensor_test(i2c_port_t i2c_num, uint8_t *data_h, uint8_t *data_l)
+// {
+//     int ret;
+//     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+//     i2c_master_start(cmd);
+//     i2c_master_write_byte(cmd, BH1750_SENSOR_ADDR << 1 | WRITE_BIT, ACK_CHECK_EN);
+//     i2c_master_write_byte(cmd, BH1750_CMD_START, ACK_CHECK_EN);
+//     i2c_master_stop(cmd);
+//     ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+//     i2c_cmd_link_delete(cmd);
+//     if (ret != ESP_OK) {
+//         return ret;
+//     }
+//     vTaskDelay(30 / portTICK_RATE_MS);
+//     cmd = i2c_cmd_link_create();
+//     i2c_master_start(cmd);
+//     i2c_master_write_byte(cmd, BH1750_SENSOR_ADDR << 1 | READ_BIT, ACK_CHECK_EN);
+//     i2c_master_read_byte(cmd, data_h, ACK_VAL);
+//     i2c_master_read_byte(cmd, data_l, NACK_VAL);
+//     i2c_master_stop(cmd);
+//     ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+//     i2c_cmd_link_delete(cmd);
+//     return ret;
+// }
 
 /**
  * @brief i2c master initialization
@@ -201,6 +201,44 @@ static void disp_buf(uint8_t *buf, int len)
 }
 #endif //!CONFIG_IDF_TARGET_ESP32C3
 
+/**
+ * @brief Master read function
+ * 
+ * @param data 
+ * @param ret 
+ * @param data_rd 
+ * @param task_idx 
+ */
+void master_read_func(uint8_t *data, uint8_t *data_rd, uint32_t task_idx)
+{
+    int master_read_ret;
+    // Write the slave stuff rq
+    size_t d_size = i2c_slave_write_buffer(I2C_SLAVE_NUM, data, RW_TEST_LENGTH, 1000 / portTICK_RATE_MS);
+    if (d_size == 0) {
+        ESP_LOGW(TAG, "i2c slave tx buffer full");
+        master_read_ret = i2c_master_read_slave(I2C_MASTER_NUM, data_rd, DATA_LENGTH);
+    } else {
+        master_read_ret = i2c_master_read_slave(I2C_MASTER_NUM, data_rd, RW_TEST_LENGTH);
+    }
+
+    if (master_read_ret == ESP_ERR_TIMEOUT) {
+        ESP_LOGE(TAG, "I2C Timeout");
+    } else if (master_read_ret == ESP_OK) {
+        printf("*******************\n");
+        printf("TASK[%d]  MASTER READ FROM SLAVE\n", task_idx);
+        printf("*******************\n");
+        printf("====TASK[%d] Slave buffer data ====\n", task_idx);
+        disp_buf(data, d_size);
+        printf("====TASK[%d] Master read ====\n", task_idx);
+        disp_buf(data_rd, d_size);
+    } else {
+        ESP_LOGW(TAG, "TASK[%d] %s: Master read slave error, IO not connected...\n",
+                    task_idx, esp_err_to_name(master_read_ret));
+    }
+}
+
+
+
 static void i2c_test_task(void *arg)
 {
     int ret;
@@ -211,55 +249,31 @@ static void i2c_test_task(void *arg)
     uint8_t *data_wr = (uint8_t *)malloc(DATA_LENGTH);
     uint8_t *data_rd = (uint8_t *)malloc(DATA_LENGTH);
 #endif //!CONFIG_IDF_TARGET_ESP32C3
-    uint8_t sensor_data_h, sensor_data_l;
     int cnt = 0;
     while (1) {
         ESP_LOGI(TAG, "TASK[%d] test cnt: %d", task_idx, cnt++);
-        ret = i2c_master_sensor_test(I2C_MASTER_NUM, &sensor_data_h, &sensor_data_l);
-        xSemaphoreTake(print_mux, portMAX_DELAY);
-        if (ret == ESP_ERR_TIMEOUT) {
-            ESP_LOGE(TAG, "I2C Timeout");
-        } else if (ret == ESP_OK) {
-            printf("*******************\n");
-            printf("TASK[%d]  MASTER READ SENSOR( BH1750 )\n", task_idx);
-            printf("*******************\n");
-            printf("data_h: %02x\n", sensor_data_h);
-            printf("data_l: %02x\n", sensor_data_l);
-            printf("sensor val: %.02f [Lux]\n", (sensor_data_h << 8 | sensor_data_l) / 1.2);
-        } else {
-            ESP_LOGW(TAG, "%s: No ack, sensor not connected...skip...", esp_err_to_name(ret));
-        }
-        xSemaphoreGive(print_mux);
+        //
+        //   ╔══════════════════════════════════════════════╗
+        // ╔══════════════════════════════════════════════════╗
+        // ║                                                  ║
+        // ║  MASTER CODE                                     ║
+        // ║                                                  ║
+        // ╚══════════════════════════════════════════════════╝
+        //   ╚══════════════════════════════════════════════╝
+        //
+        // Delay for some time.
         vTaskDelay((DELAY_TIME_BETWEEN_ITEMS_MS * (task_idx + 1)) / portTICK_RATE_MS);
-        //---------------------------------------------------
-#if !CONFIG_IDF_TARGET_ESP32C3
+        // Fill the data array with incrementing numbers.
         for (i = 0; i < DATA_LENGTH; i++) {
             data[i] = i;
         }
-        xSemaphoreTake(print_mux, portMAX_DELAY);
-        size_t d_size = i2c_slave_write_buffer(I2C_SLAVE_NUM, data, RW_TEST_LENGTH, 1000 / portTICK_RATE_MS);
-        if (d_size == 0) {
-            ESP_LOGW(TAG, "i2c slave tx buffer full");
-            ret = i2c_master_read_slave(I2C_MASTER_NUM, data_rd, DATA_LENGTH);
-        } else {
-            ret = i2c_master_read_slave(I2C_MASTER_NUM, data_rd, RW_TEST_LENGTH);
-        }
 
-        if (ret == ESP_ERR_TIMEOUT) {
-            ESP_LOGE(TAG, "I2C Timeout");
-        } else if (ret == ESP_OK) {
-            printf("*******************\n");
-            printf("TASK[%d]  MASTER READ FROM SLAVE\n", task_idx);
-            printf("*******************\n");
-            printf("====TASK[%d] Slave buffer data ====\n", task_idx);
-            disp_buf(data, d_size);
-            printf("====TASK[%d] Master read ====\n", task_idx);
-            disp_buf(data_rd, d_size);
-        } else {
-            ESP_LOGW(TAG, "TASK[%d] %s: Master read slave error, IO not connected...\n",
-                     task_idx, esp_err_to_name(ret));
-        }
+        // BEGIN THIS THING
+        xSemaphoreTake(print_mux, portMAX_DELAY);
+        master_read_func(data, data_rd, task_idx);
         xSemaphoreGive(print_mux);
+        // END THIS THING
+        
         vTaskDelay((DELAY_TIME_BETWEEN_ITEMS_MS * (task_idx + 1)) / portTICK_RATE_MS);
         //---------------------------------------------------
         int size;
@@ -271,6 +285,8 @@ static void i2c_test_task(void *arg)
         ret = i2c_master_write_slave(I2C_MASTER_NUM, data_wr, RW_TEST_LENGTH);
         if (ret == ESP_OK) {
             size = i2c_slave_read_buffer(I2C_SLAVE_NUM, data, RW_TEST_LENGTH, 1000 / portTICK_RATE_MS);
+        } else {
+            size = -1;
         }
         if (ret == ESP_ERR_TIMEOUT) {
             ESP_LOGE(TAG, "I2C Timeout");
@@ -288,7 +304,6 @@ static void i2c_test_task(void *arg)
         }
         xSemaphoreGive(print_mux);
         vTaskDelay((DELAY_TIME_BETWEEN_ITEMS_MS * (task_idx + 1)) / portTICK_RATE_MS);
-#endif //!CONFIG_IDF_TARGET_ESP32C3
     }
     vSemaphoreDelete(print_mux);
     vTaskDelete(NULL);
@@ -297,10 +312,13 @@ static void i2c_test_task(void *arg)
 void app_main(void)
 {
     print_mux = xSemaphoreCreateMutex();
-#if !CONFIG_IDF_TARGET_ESP32C3
+// #if IS_SLAVE
+//     ESP_ERROR_CHECK(i2c_slave_init());
+// #else
+//     ESP_ERROR_CHECK(i2c_master_init());
+// #endif
     ESP_ERROR_CHECK(i2c_slave_init());
-#endif
     ESP_ERROR_CHECK(i2c_master_init());
     xTaskCreate(i2c_test_task, "i2c_test_task_0", 1024 * 2, (void *)0, 10, NULL);
-    xTaskCreate(i2c_test_task, "i2c_test_task_1", 1024 * 2, (void *)1, 10, NULL);
+    // xTaskCreate(i2c_test_task, "i2c_test_task_1", 1024 * 2, (void *)1, 10, NULL);
 }
