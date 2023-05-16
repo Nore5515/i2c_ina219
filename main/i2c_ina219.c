@@ -46,7 +46,6 @@ SemaphoreHandle_t print_mux = NULL;
 
 /**
  * @brief test code to read esp-i2c-slave
- *        We need to fill the buffer of esp slave device, then master can read them out.
  * _______________________________________________________________________________________
  * | start | slave_addr + rd_bit +ack | read n-1 bytes + ack | read 1 byte + nack | stop |
  * --------|--------------------------|----------------------|--------------------|------|
