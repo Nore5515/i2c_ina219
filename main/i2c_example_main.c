@@ -48,17 +48,16 @@ static const char *TAG = "i2c-example";
 #define ACK_VAL 0x0                             /*!< I2C ack value */
 #define NACK_VAL 0x1                            /*!< I2C nack value */
 
+#define IS_SLAVE false
+
 SemaphoreHandle_t print_mux = NULL;
 
 /**
  * @brief test code to read esp-i2c-slave
  *        We need to fill the buffer of esp slave device, then master can read them out.
- *
  * _______________________________________________________________________________________
  * | start | slave_addr + rd_bit +ack | read n-1 bytes + ack | read 1 byte + nack | stop |
  * --------|--------------------------|----------------------|--------------------|------|
- *
- * @note cannot use master read slave on esp32c3 because there is only one i2c controller on esp32c3
  */
 static esp_err_t __attribute__((unused)) i2c_master_read_slave(i2c_port_t i2c_num, uint8_t *data_rd, size_t size)
 {
@@ -68,15 +67,41 @@ static esp_err_t __attribute__((unused)) i2c_master_read_slave(i2c_port_t i2c_nu
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
     i2c_master_write_byte(cmd, (ESP_SLAVE_ADDR << 1) | READ_BIT, ACK_CHECK_EN);
+// #if IS_SLAVE
     if (size > 1) {
         i2c_master_read(cmd, data_rd, size - 1, ACK_VAL);
     }
+// #else
+    // i2c_master_read(cmd, data_rd, size - 1, ACK_VAL);
+// #endif
     i2c_master_read_byte(cmd, data_rd + size - 1, NACK_VAL);
     i2c_master_stop(cmd);
     esp_err_t ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
     i2c_cmd_link_delete(cmd);
     return ret;
 }
+
+// static esp_err_t master_write_cmd(i2c_port_t i2c_num, uint8_t *data_rd, size_t size)
+// {
+//     if (size == 0) {
+//         return ESP_OK;
+//     }
+//     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+//     i2c_master_start(cmd);
+//     i2c_master_write_byte(cmd, (ESP_SLAVE_ADDR << 1) | READ_BIT, ACK_CHECK_EN);
+// // #if IS_SLAVE
+//     if (size > 1) {
+//         i2c_master_read(cmd, data_rd, size - 1, ACK_VAL);
+//     }
+// // #else
+//     // i2c_master_read(cmd, data_rd, size - 1, ACK_VAL);
+// // #endif
+//     i2c_master_read_byte(cmd, data_rd + size - 1, NACK_VAL);
+//     i2c_master_stop(cmd);
+//     esp_err_t ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
+//     i2c_cmd_link_delete(cmd);
+//     return ret;
+// }
 
 /**
  * @brief Test code to write esp-i2c-slave
@@ -211,24 +236,30 @@ static void disp_buf(uint8_t *buf, int len)
  */
 void master_read_func(uint8_t *data, uint8_t *data_rd, uint32_t task_idx)
 {
+    // the response from the master_read_slave func
     int master_read_ret;
     // Write the slave stuff rq
+#if IS_SLAVE
     size_t d_size = i2c_slave_write_buffer(I2C_SLAVE_NUM, data, RW_TEST_LENGTH, 1000 / portTICK_RATE_MS);
+#else
+    size_t d_size = 128;
+#endif
     if (d_size == 0) {
         ESP_LOGW(TAG, "i2c slave tx buffer full");
         master_read_ret = i2c_master_read_slave(I2C_MASTER_NUM, data_rd, DATA_LENGTH);
     } else {
         master_read_ret = i2c_master_read_slave(I2C_MASTER_NUM, data_rd, RW_TEST_LENGTH);
     }
-
     if (master_read_ret == ESP_ERR_TIMEOUT) {
         ESP_LOGE(TAG, "I2C Timeout");
     } else if (master_read_ret == ESP_OK) {
         printf("*******************\n");
         printf("TASK[%d]  MASTER READ FROM SLAVE\n", task_idx);
         printf("*******************\n");
+#if IS_SLAVE
         printf("====TASK[%d] Slave buffer data ====\n", task_idx);
         disp_buf(data, d_size);
+#endif
         printf("====TASK[%d] Master read ====\n", task_idx);
         disp_buf(data_rd, d_size);
     } else {
@@ -317,7 +348,7 @@ void app_main(void)
 // #else
 //     ESP_ERROR_CHECK(i2c_master_init());
 // #endif
-    ESP_ERROR_CHECK(i2c_slave_init());
+    // ESP_ERROR_CHECK(i2c_slave_init());
     ESP_ERROR_CHECK(i2c_master_init());
     xTaskCreate(i2c_test_task, "i2c_test_task_0", 1024 * 2, (void *)0, 10, NULL);
     // xTaskCreate(i2c_test_task, "i2c_test_task_1", 1024 * 2, (void *)1, 10, NULL);
