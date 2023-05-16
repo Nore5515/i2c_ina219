@@ -9,6 +9,10 @@
     "array": "c",
     "string": "c",
     "string_view": "c",
-    "i2c.h": "c"
+    "i2c.h": "c",
+    "bitset": "c",
+    "initializer_list": "c",
+    "regex": "c",
+    "utility": "c"
   }
 }

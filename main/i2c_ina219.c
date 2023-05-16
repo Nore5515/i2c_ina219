@@ -50,7 +50,7 @@ SemaphoreHandle_t print_mux = NULL;
  * | start | slave_addr + rd_bit +ack | read n-1 bytes + ack | read 1 byte + nack | stop |
  * --------|--------------------------|----------------------|--------------------|------|
  */
-static esp_err_t __attribute__((unused)) i2c_master_read_slave(i2c_port_t i2c_num, uint8_t *data_rd, size_t size)
+static esp_err_t i2c_master_read_slave(i2c_port_t i2c_num, uint8_t *data_rd, size_t size)
 {
     if (size == 0)
     {
@@ -94,17 +94,12 @@ static esp_err_t __attribute__((unused)) i2c_master_read_slave(i2c_port_t i2c_nu
 
 /**
  * @brief Test code to write esp-i2c-slave
- *        Master device write data to slave(both esp32),
- *        the data will be stored in slave buffer.
- *        We can read them out from slave buffer.
- *
+ *        Master device write data to slave.
  * ___________________________________________________________________
  * | start | slave_addr + wr_bit + ack | write n bytes + ack  | stop |
  * --------|---------------------------|----------------------|------|
- *
- * @note cannot use master write slave on esp32c3 because there is only one i2c controller on esp32c3
  */
-static esp_err_t __attribute__((unused)) i2c_master_write_slave(i2c_port_t i2c_num, uint8_t *data_wr, size_t size)
+static esp_err_t i2c_master_write_slave(i2c_port_t i2c_num, uint8_t *data_wr, size_t size)
 {
     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
     i2c_master_start(cmd);
@@ -207,7 +202,7 @@ static void i2c_test_task(void *arg)
     int cnt = 0;
     while (1)
     {
-        ESP_LOGI(TAG, "TASK[%d] test cnt: %d", task_idx, cnt++);
+        ESP_LOGI(TAG, "test cnt: %d", cnt++);
 
         // Delay for some time.
         vTaskDelay(DELAY_TIME_BETWEEN_ITEMS_MS / portTICK_RATE_MS);
@@ -217,24 +212,16 @@ static void i2c_test_task(void *arg)
         master_read_func(data_rd);
         xSemaphoreGive(print_mux);
 
+        // Delay for some time.
         vTaskDelay(DELAY_TIME_BETWEEN_ITEMS_MS / portTICK_RATE_MS);
 
-        int size;
         for (i = 0; i < DATA_LENGTH; i++)
         {
             data_wr[i] = i + 10;
         }
+
         xSemaphoreTake(print_mux, portMAX_DELAY);
-        // we need to fill the slave buffer so that master can read later
         ret = i2c_master_write_slave(I2C_MASTER_NUM, data_wr, RW_TEST_LENGTH);
-        if (ret == ESP_OK)
-        {
-            size = i2c_slave_read_buffer(I2C_SLAVE_NUM, data, RW_TEST_LENGTH, 1000 / portTICK_RATE_MS);
-        }
-        else
-        {
-            size = -1;
-        }
         if (ret == ESP_ERR_TIMEOUT)
         {
             ESP_LOGE(TAG, "I2C Timeout");
@@ -242,12 +229,10 @@ static void i2c_test_task(void *arg)
         else if (ret == ESP_OK)
         {
             printf("*******************\n");
-            printf("TASK[%d]  MASTER WRITE TO SLAVE\n", task_idx);
+            printf("MASTER WRITE TO SLAVE\n");
             printf("*******************\n");
-            printf("----TASK[%d] Master write ----\n", task_idx);
+            printf("----Master write ----\n");
             disp_buf(data_wr, RW_TEST_LENGTH);
-            printf("----TASK[%d] Slave read: [%d] bytes ----\n", task_idx, size);
-            disp_buf(data, size);
         }
         else
         {
@@ -255,6 +240,8 @@ static void i2c_test_task(void *arg)
                      task_idx, esp_err_to_name(ret));
         }
         xSemaphoreGive(print_mux);
+
+        // Delay for some time.
         vTaskDelay((DELAY_TIME_BETWEEN_ITEMS_MS * (task_idx + 1)) / portTICK_RATE_MS);
     }
     vSemaphoreDelete(print_mux);
