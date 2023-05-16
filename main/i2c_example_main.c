@@ -25,8 +25,6 @@ static const char *TAG = "i2c-example";
 #define RW_TEST_LENGTH 128               /*!< Data length for r/w test, [0,DATA_LENGTH] */
 #define DELAY_TIME_BETWEEN_ITEMS_MS 1000 /*!< delay time between different test items */
 
-#define I2C_SLAVE_SCL_IO CONFIG_I2C_SLAVE_SCL               /*!< gpio number for i2c slave clock */
-#define I2C_SLAVE_SDA_IO CONFIG_I2C_SLAVE_SDA               /*!< gpio number for i2c slave data */
 #define I2C_SLAVE_NUM I2C_NUMBER(CONFIG_I2C_SLAVE_PORT_NUM) /*!< I2C port number for slave dev */
 #define I2C_SLAVE_TX_BUF_LEN (2 * DATA_LENGTH)              /*!< I2C slave tx buffer size */
 #define I2C_SLAVE_RX_BUF_LEN (2 * DATA_LENGTH)              /*!< I2C slave rx buffer size */
@@ -148,30 +146,6 @@ static esp_err_t i2c_master_init(void)
     return i2c_driver_install(i2c_master_port, conf.mode, I2C_MASTER_RX_BUF_DISABLE, I2C_MASTER_TX_BUF_DISABLE, 0);
 }
 
-#if !CONFIG_IDF_TARGET_ESP32C3
-/**
- * @brief i2c slave initialization
- */
-static esp_err_t i2c_slave_init(void)
-{
-    int i2c_slave_port = I2C_SLAVE_NUM;
-    i2c_config_t conf_slave = {
-        .sda_io_num = I2C_SLAVE_SDA_IO,
-        .sda_pullup_en = GPIO_PULLUP_ENABLE,
-        .scl_io_num = I2C_SLAVE_SCL_IO,
-        .scl_pullup_en = GPIO_PULLUP_ENABLE,
-        .mode = I2C_MODE_SLAVE,
-        .slave.addr_10bit_en = 0,
-        .slave.slave_addr = ESP_SLAVE_ADDR,
-    };
-    esp_err_t err = i2c_param_config(i2c_slave_port, &conf_slave);
-    if (err != ESP_OK)
-    {
-        return err;
-    }
-    return i2c_driver_install(i2c_slave_port, conf_slave.mode, I2C_SLAVE_RX_BUF_LEN, I2C_SLAVE_TX_BUF_LEN, 0);
-}
-
 /**
  * @brief test function to show buffer
  */
@@ -188,7 +162,6 @@ static void disp_buf(uint8_t *buf, int len)
     }
     printf("\n");
 }
-#endif //! CONFIG_IDF_TARGET_ESP32C3
 
 /**
  * @brief Master read function
