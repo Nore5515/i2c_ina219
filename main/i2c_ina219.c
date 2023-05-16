@@ -210,16 +210,15 @@ static void i2c_test_task(void *arg)
         ESP_LOGI(TAG, "TASK[%d] test cnt: %d", task_idx, cnt++);
 
         // Delay for some time.
-        vTaskDelay((DELAY_TIME_BETWEEN_ITEMS_MS * (task_idx + 1)) / portTICK_RATE_MS);
+        vTaskDelay(DELAY_TIME_BETWEEN_ITEMS_MS / portTICK_RATE_MS);
 
-        // BEGIN THIS THING
+        // Read in data
         xSemaphoreTake(print_mux, portMAX_DELAY);
         master_read_func(data_rd);
         xSemaphoreGive(print_mux);
-        // END THIS THING
 
-        vTaskDelay((DELAY_TIME_BETWEEN_ITEMS_MS * (task_idx + 1)) / portTICK_RATE_MS);
-        //---------------------------------------------------
+        vTaskDelay(DELAY_TIME_BETWEEN_ITEMS_MS / portTICK_RATE_MS);
+
         int size;
         for (i = 0; i < DATA_LENGTH; i++)
         {
