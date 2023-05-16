@@ -191,12 +191,31 @@ void master_read_func(uint8_t *data_rd)
     }
 }
 
+void handle_master_write_slave(uint8_t *data_wr)
+{
+    int ret = i2c_master_write_slave(I2C_MASTER_NUM, data_wr, RW_TEST_LENGTH);
+    if (ret == ESP_ERR_TIMEOUT)
+    {
+        ESP_LOGE(TAG, "I2C Timeout");
+    }
+    else if (ret == ESP_OK)
+    {
+        printf("*******************\n");
+        printf("MASTER WRITE TO SLAVE\n");
+        printf("*******************\n");
+        printf("----Master write ----\n");
+        disp_buf(data_wr, RW_TEST_LENGTH);
+    }
+    else
+    {
+        ESP_LOGW(TAG, "%s: Master write slave error, IO not connected....\n", esp_err_to_name(ret));
+    }
+}
+
 static void i2c_test_task(void *arg)
 {
-    int ret;
     uint32_t task_idx = (uint32_t)arg;
     int i = 0;
-    uint8_t *data = (uint8_t *)malloc(DATA_LENGTH);
     uint8_t *data_wr = (uint8_t *)malloc(DATA_LENGTH);
     uint8_t *data_rd = (uint8_t *)malloc(DATA_LENGTH);
     int cnt = 0;
@@ -220,25 +239,9 @@ static void i2c_test_task(void *arg)
             data_wr[i] = i + 10;
         }
 
+        // hmm..this task looks functionable.
         xSemaphoreTake(print_mux, portMAX_DELAY);
-        ret = i2c_master_write_slave(I2C_MASTER_NUM, data_wr, RW_TEST_LENGTH);
-        if (ret == ESP_ERR_TIMEOUT)
-        {
-            ESP_LOGE(TAG, "I2C Timeout");
-        }
-        else if (ret == ESP_OK)
-        {
-            printf("*******************\n");
-            printf("MASTER WRITE TO SLAVE\n");
-            printf("*******************\n");
-            printf("----Master write ----\n");
-            disp_buf(data_wr, RW_TEST_LENGTH);
-        }
-        else
-        {
-            ESP_LOGW(TAG, "TASK[%d] %s: Master write slave error, IO not connected....\n",
-                     task_idx, esp_err_to_name(ret));
-        }
+        handle_master_write_slave(data_wr);
         xSemaphoreGive(print_mux);
 
         // Delay for some time.
