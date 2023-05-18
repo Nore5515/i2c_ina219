@@ -10,6 +10,7 @@
  */
 
 #include <stdio.h>
+#include <string.h>
 #include "esp_log.h"
 #include "driver/i2c.h"
 #include "sdkconfig.h"
@@ -69,28 +70,6 @@ static esp_err_t i2c_master_read_slave(i2c_port_t i2c_num, uint8_t *data_rd, siz
     i2c_cmd_link_delete(cmd);
     return ret;
 }
-
-// static esp_err_t master_write_cmd(i2c_port_t i2c_num, uint8_t *data_rd, size_t size)
-// {
-//     if (size == 0) {
-//         return ESP_OK;
-//     }
-//     i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-//     i2c_master_start(cmd);
-//     i2c_master_write_byte(cmd, (ESP_SLAVE_ADDR << 1) | READ_BIT, ACK_CHECK_EN);
-// // #if IS_SLAVE
-//     if (size > 1) {
-//         i2c_master_read(cmd, data_rd, size - 1, ACK_VAL);
-//     }
-// // #else
-//     // i2c_master_read(cmd, data_rd, size - 1, ACK_VAL);
-// // #endif
-//     i2c_master_read_byte(cmd, data_rd + size - 1, NACK_VAL);
-//     i2c_master_stop(cmd);
-//     esp_err_t ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-//     i2c_cmd_link_delete(cmd);
-//     return ret;
-// }
 
 /**
  * @brief Test code to write esp-i2c-slave
@@ -163,7 +142,7 @@ void master_read_func(uint8_t *data_rd)
 {
     // the response from the master_read_slave func
     int master_read_ret;
-    size_t d_size = 128;
+    size_t d_size = 2;
     if (d_size == 0)
     {
         ESP_LOGW(TAG, "i2c slave tx buffer full");
@@ -184,6 +163,12 @@ void master_read_func(uint8_t *data_rd)
         printf("*******************\n");
         printf("==== Master read ====\n");
         disp_buf(data_rd, d_size);
+
+        int big_endian = data_rd[0] | (data_rd[1] << 8);
+        int little_endian = (data_rd[0] << 8) | data_rd[1];
+        printf("=== Converted Val ====\n");
+        printf("Big Endian: %d\n", big_endian);
+        printf("Little Endian: %d\n", little_endian);
     }
     else
     {
@@ -191,9 +176,9 @@ void master_read_func(uint8_t *data_rd)
     }
 }
 
-void handle_master_write_slave(uint8_t *data_wr)
+void handle_master_write_slave(uint8_t *data_wr, int len)
 {
-    int ret = i2c_master_write_slave(I2C_MASTER_NUM, data_wr, RW_TEST_LENGTH);
+    int ret = i2c_master_write_slave(I2C_MASTER_NUM, data_wr, len);
     if (ret == ESP_ERR_TIMEOUT)
     {
         ESP_LOGE(TAG, "I2C Timeout");
@@ -204,7 +189,7 @@ void handle_master_write_slave(uint8_t *data_wr)
         printf("MASTER WRITE TO SLAVE\n");
         printf("*******************\n");
         printf("----Master write ----\n");
-        disp_buf(data_wr, RW_TEST_LENGTH);
+        disp_buf(data_wr, len);
     }
     else
     {
@@ -215,7 +200,7 @@ void handle_master_write_slave(uint8_t *data_wr)
 static void i2c_test_task(void *arg)
 {
     uint32_t task_idx = (uint32_t)arg;
-    int i = 0;
+    // int i = 0;
     uint8_t *data_wr = (uint8_t *)malloc(DATA_LENGTH);
     uint8_t *data_rd = (uint8_t *)malloc(DATA_LENGTH);
     int cnt = 0;
@@ -234,15 +219,33 @@ static void i2c_test_task(void *arg)
         // Delay for some time.
         vTaskDelay(DELAY_TIME_BETWEEN_ITEMS_MS / portTICK_RATE_MS);
 
-        for (i = 0; i < DATA_LENGTH; i++)
-        {
-            data_wr[i] = i + 10;
-        }
+        // ALL COMMANDS ARE JUST A SINGLE HEX (aka 8 bits)
+        // Bit 1: Always a 1, a sort of "start".
+        // Bit 2: Address 06
+        // Bit 3: Address 05
+        // Bit 4: Address 04
+        // Bit 5: Address 03
+        // Bit 6: Address 0
+        // Bit 7: Address 01
+        // Bit 8: R/W (0 is write, 1 is read)
 
-        // hmm..this task looks functionable.
-        xSemaphoreTake(print_mux, portMAX_DELAY);
-        handle_master_write_slave(data_wr);
-        xSemaphoreGive(print_mux);
+        // 0x85
+        uint8_t read_msg = 0b10000101;
+
+        data_wr[0] = 0x85;
+        // data_wr[1] = 0x00;
+        // data_wr[2] = 0x00;
+        // data_wr[3] = 0x01;
+        // data_wr[4] = 0x01;
+        // data_wr[5] = 0x01;
+        // data_wr[6] = 0x01;
+        // R/W Byte (1 for read, 0 for write)
+        // data_wr[7] = 0x01;
+
+        // Write to the slave.
+        // xSemaphoreTake(print_mux, portMAX_DELAY);
+        handle_master_write_slave(data_wr, 1);
+        // xSemaphoreGive(print_mux);
 
         // Delay for some time.
         vTaskDelay((DELAY_TIME_BETWEEN_ITEMS_MS * (task_idx + 1)) / portTICK_RATE_MS);
