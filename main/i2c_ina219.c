@@ -22,7 +22,7 @@ static const char *TAG = "i2c-example";
 
 #define DATA_LENGTH 512                  /*!< Data buffer length of test buffer */
 #define RW_TEST_LENGTH 128               /*!< Data length for r/w test, [0,DATA_LENGTH] */
-#define DELAY_TIME_BETWEEN_ITEMS_MS 1000 /*!< delay time between different test items */
+#define DELAY_TIME_BETWEEN_ITEMS_MS 5000 /*!< delay time between different test items */
 
 #define I2C_SLAVE_NUM I2C_NUMBER(CONFIG_I2C_SLAVE_PORT_NUM) /*!< I2C port number for slave dev */
 #define I2C_SLAVE_TX_BUF_LEN (2 * DATA_LENGTH)              /*!< I2C slave tx buffer size */
@@ -44,6 +44,10 @@ static const char *TAG = "i2c-example";
 #define NACK_VAL 0x1                            /*!< I2C nack value */
 
 SemaphoreHandle_t print_mux = NULL;
+
+// Prototypes
+void get_current(uint8_t *data_wr, uint8_t *data_rd);
+void get_power(uint8_t *data_wr, uint8_t *data_rd);
 
 /**
  * @brief test code to read esp-i2c-slave
@@ -158,9 +162,9 @@ void master_read_func(uint8_t *data_rd)
     }
     else if (master_read_ret == ESP_OK)
     {
-        printf("*******************\n");
-        printf("MASTER READ FROM SLAVE\n");
-        printf("*******************\n");
+        // printf("*******************\n");
+        // printf("MASTER READ FROM SLAVE\n");
+        // printf("*******************\n");
         printf("==== Master read ====\n");
         disp_buf(data_rd, d_size);
 
@@ -185,9 +189,9 @@ void handle_master_write_slave(uint8_t *data_wr, int len)
     }
     else if (ret == ESP_OK)
     {
-        printf("*******************\n");
-        printf("MASTER WRITE TO SLAVE\n");
-        printf("*******************\n");
+        // printf("*******************\n");
+        // printf("MASTER WRITE TO SLAVE\n");
+        // printf("*******************\n");
         printf("----Master write ----\n");
         disp_buf(data_wr, len);
     }
@@ -209,15 +213,15 @@ static void i2c_test_task(void *arg)
         ESP_LOGI(TAG, "test cnt: %d", cnt++);
 
         // Delay for some time.
-        vTaskDelay(DELAY_TIME_BETWEEN_ITEMS_MS / portTICK_RATE_MS);
+        // vTaskDelay(DELAY_TIME_BETWEEN_ITEMS_MS / portTICK_RATE_MS);
 
         // Read in data
-        xSemaphoreTake(print_mux, portMAX_DELAY);
-        master_read_func(data_rd);
-        xSemaphoreGive(print_mux);
+        // xSemaphoreTake(print_mux, portMAX_DELAY);
+        // master_read_func(data_rd);
+        // xSemaphoreGive(print_mux);
 
         // Delay for some time.
-        vTaskDelay(DELAY_TIME_BETWEEN_ITEMS_MS / portTICK_RATE_MS);
+        // vTaskDelay(DELAY_TIME_BETWEEN_ITEMS_MS / portTICK_RATE_MS);
 
         // ALL COMMANDS ARE JUST A SINGLE HEX (aka 8 bits)
         // Bit 1: Always a 1, a sort of "start".
@@ -230,28 +234,63 @@ static void i2c_test_task(void *arg)
         // Bit 8: R/W (0 is write, 1 is read)
 
         // 0x85
-        uint8_t read_msg = 0b10000101;
+        // uint8_t read_msg = 0b10000101;
 
-        data_wr[0] = 0x85;
-        // data_wr[1] = 0x00;
-        // data_wr[2] = 0x00;
-        // data_wr[3] = 0x01;
-        // data_wr[4] = 0x01;
-        // data_wr[5] = 0x01;
-        // data_wr[6] = 0x01;
-        // R/W Byte (1 for read, 0 for write)
-        // data_wr[7] = 0x01;
+        // Msg 1 is the addresss, with a LOW on the R/W bit.
+        // 0x84
+        // uint8_t write_msg_1 = 0b10000100;
+        // Msg 2 is the register, currently assigned to Shunt Voltage.
+        // uint8_t write_msg_2 = 0x01;
+
+        // Just Read
+        // data_wr[0] = 0x85;
+
+        // Set register
+        // data_wr[0] = 0x84;
+        // data_wr[1] = 0x02;
 
         // Write to the slave.
-        // xSemaphoreTake(print_mux, portMAX_DELAY);
+        // handle_master_write_slave(data_wr, 1);
+
+        // Shunt Voltage
+        vTaskDelay(250 / portTICK_RATE_MS);
+        data_wr[0] = 0x01;
         handle_master_write_slave(data_wr, 1);
-        // xSemaphoreGive(print_mux);
+        master_read_func(data_rd);
+
+        // Bus Voltage
+        vTaskDelay(250 / portTICK_RATE_MS);
+        data_wr[0] = 0x02;
+        handle_master_write_slave(data_wr, 1);
+        master_read_func(data_rd);
+
+        // Power
+        // vTaskDelay(250 / portTICK_RATE_MS);
+        // get_power(data_wr, data_rd);
+
+        // Current
+        // vTaskDelay(250 / portTICK_RATE_MS);
+        // get_current(data_wr, data_rd);
 
         // Delay for some time.
         vTaskDelay((DELAY_TIME_BETWEEN_ITEMS_MS * (task_idx + 1)) / portTICK_RATE_MS);
     }
     vSemaphoreDelete(print_mux);
     vTaskDelete(NULL);
+}
+
+void get_power(uint8_t *data_wr, uint8_t *data_rd)
+{
+    data_wr[0] = 0x03;
+    handle_master_write_slave(data_wr, 1);
+    master_read_func(data_rd);
+}
+
+void get_current(uint8_t *data_wr, uint8_t *data_rd)
+{
+    data_wr[0] = 0x04;
+    handle_master_write_slave(data_wr, 1);
+    master_read_func(data_rd);
 }
 
 // Begin the FreeRTOS task "i2c_test_task"
