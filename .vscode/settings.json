@@ -1,6 +1,6 @@
 {
   "C_Cpp.intelliSenseEngine": "Tag Parser",
-  "idf.port": "/dev/cu.usbserial-1120",
+  "idf.port": "/dev/cu.usbserial-2120",
   "idf.flashType": "UART",
   "idf.adapterTargetName": "esp32s3",
   "idf.openOcdConfigs": ["board/esp32s3-builtin.cfg"],
@@ -14,6 +14,7 @@
     "initializer_list": "c",
     "regex": "c",
     "utility": "c",
-    "codecvt": "c"
+    "codecvt": "c",
+    "cstddef": "c"
   }
 }

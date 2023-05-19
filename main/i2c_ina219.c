@@ -134,6 +134,28 @@ static void disp_buf(uint8_t *buf, int len)
     printf("\n");
 }
 
+// oh boy.
+/**
+ * @brief Shifts an array of hexes right once.
+ *
+ * @param array
+ * @param length
+ * @param shift
+ */
+void shiftArrayRight(uint8_t *array, size_t length)
+{
+    size_t i;
+    uint8_t carry = 0;
+
+    for (i = 0; i < length; i++)
+    {
+        uint8_t temp = array[i] & 0x01;
+        array[i] >>= 1;      // Right bit shift by 1
+        array[i] |= carry;   // Apply carry from the previous element
+        carry = (temp << 7); // Store the carried bit for the next element
+    }
+}
+
 /**
  * @brief Master read function
  *
@@ -167,12 +189,17 @@ void master_read_func(uint8_t *data_rd)
         // printf("*******************\n");
         printf("==== Master read ====\n");
         disp_buf(data_rd, d_size);
-
-        int big_endian = data_rd[0] | (data_rd[1] << 8);
         int little_endian = (data_rd[0] << 8) | data_rd[1];
-        printf("=== Converted Val ====\n");
-        printf("Big Endian: %d\n", big_endian);
-        printf("Little Endian: %d\n", little_endian);
+        printf("Decimal Val: %d\n", little_endian);
+
+        // EXCTRACTING THE FIRST 13 VALUES
+        uint8_t *snatchedData = (uint8_t *)malloc(DATA_LENGTH);
+        snatchedData[0] = data_rd[0];
+        snatchedData[1] = data_rd[1];
+        shiftArrayRight(snatchedData, 2);
+        shiftArrayRight(snatchedData, 2);
+        shiftArrayRight(snatchedData, 2);
+        disp_buf(snatchedData, 2);
     }
     else
     {
