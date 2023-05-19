@@ -200,6 +200,8 @@ void master_read_func(uint8_t *data_rd)
         shiftArrayRight(snatchedData, 2);
         shiftArrayRight(snatchedData, 2);
         disp_buf(snatchedData, 2);
+        little_endian = (snatchedData[0] << 8) | snatchedData[1];
+        printf("Decimal Val: %d\n", little_endian);
     }
     else
     {
