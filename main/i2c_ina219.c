@@ -46,10 +46,10 @@ static const char *TAG = "i2c-example";
 SemaphoreHandle_t print_mux = NULL;
 
 // Prototypes
-void get_current(uint8_t *data_wr, uint8_t *data_rd);
-void get_power(uint8_t *data_wr, uint8_t *data_rd);
-void get_shunt(uint8_t *data_wr, uint8_t *data_rd);
-void get_bus(uint8_t *data_wr, uint8_t *data_rd);
+int get_current(uint8_t *data_wr, uint8_t *data_rd);
+int get_power(uint8_t *data_wr, uint8_t *data_rd);
+int get_shunt(uint8_t *data_wr, uint8_t *data_rd);
+int get_bus(uint8_t *data_wr, uint8_t *data_rd);
 
 /**
  * @brief test code to read esp-i2c-slave
@@ -136,7 +136,6 @@ static void disp_buf(uint8_t *buf, int len)
     printf("\n");
 }
 
-// oh boy.
 /**
  * @brief Shifts an array of hexes right once.
  *
@@ -144,33 +143,38 @@ static void disp_buf(uint8_t *buf, int len)
  * @param length
  * @param shift
  */
-void shiftArrayRight(uint8_t *array, size_t length)
+void shiftArrayRight(uint8_t *array, size_t length, uint8_t shift)
 {
     size_t i;
+    size_t j;
     uint8_t carry = 0;
 
-    for (i = 0; i < length; i++)
+    for (j = 0; j < shift; j++)
     {
-        uint8_t temp = array[i] & 0x01;
-        array[i] >>= 1;      // Right bit shift by 1
-        array[i] |= carry;   // Apply carry from the previous element
-        carry = (temp << 7); // Store the carried bit for the next element
+        for (i = 0; i < length; i++)
+        {
+            uint8_t temp = array[i] & 0x01;
+            array[i] >>= 1;      // Right bit shift by 1
+            array[i] |= carry;   // Apply carry from the previous element
+            carry = (temp << 7); // Store the carried bit for the next element
+        }
+        carry = 0;
     }
 }
 
 /**
- * @brief Master read function
+ * @brief Passed in a read bufer, return the decimal value.
  *
- * @param data
- * @param ret
  * @param data_rd
- * @param task_idx
+ * @return int
  */
-void master_read_func(uint8_t *data_rd)
+int master_read_func(uint8_t *data_rd)
 {
     // the response from the master_read_slave func
     int master_read_ret;
     size_t d_size = 2;
+
+    // Read the i2c slave data.
     if (d_size == 0)
     {
         ESP_LOGW(TAG, "i2c slave tx buffer full");
@@ -180,35 +184,27 @@ void master_read_func(uint8_t *data_rd)
     {
         master_read_ret = i2c_master_read_slave(I2C_MASTER_NUM, data_rd, RW_TEST_LENGTH);
     }
+
     if (master_read_ret == ESP_ERR_TIMEOUT)
     {
         ESP_LOGE(TAG, "I2C Timeout");
     }
     else if (master_read_ret == ESP_OK)
     {
-        // printf("*******************\n");
-        // printf("MASTER READ FROM SLAVE\n");
-        // printf("*******************\n");
-        // printf("==== Master read ====\n");
-        // disp_buf(data_rd, d_size);
-        // int little_endian = (data_rd[0] << 8) | data_rd[1];
+        uint8_t *extractedData = (uint8_t *)malloc(DATA_LENGTH);
+        extractedData[0] = data_rd[0];
+        extractedData[1] = data_rd[1];
+        shiftArrayRight(extractedData, 2, 3);
+        // disp_buf(extractedData, 2);
+        int little_endian = (extractedData[0] << 8) | extractedData[1];
         // printf("Decimal Val: %d\n", little_endian);
-
-        // EXCTRACTING THE FIRST 13 VALUES
-        uint8_t *snatchedData = (uint8_t *)malloc(DATA_LENGTH);
-        snatchedData[0] = data_rd[0];
-        snatchedData[1] = data_rd[1];
-        shiftArrayRight(snatchedData, 2);
-        shiftArrayRight(snatchedData, 2);
-        shiftArrayRight(snatchedData, 2);
-        disp_buf(snatchedData, 2);
-        int little_endian = (snatchedData[0] << 8) | snatchedData[1];
-        printf("Decimal Val: %d\n", little_endian);
+        return little_endian;
     }
     else
     {
         ESP_LOGW(TAG, " %s: Master read slave error, IO not connected...\n", esp_err_to_name(master_read_ret));
     }
+    return -1;
 }
 
 void handle_master_write_slave(uint8_t *data_wr, int len)
@@ -220,12 +216,7 @@ void handle_master_write_slave(uint8_t *data_wr, int len)
     }
     else if (ret == ESP_OK)
     {
-        // printf("*******************\n");
-        // printf("MASTER WRITE TO SLAVE\n");
-        // printf("*******************\n");
-        // printf("----Master write ----\n");
-        // disp_buf(data_wr, len);
-        printf("--Master Log Successful--\n");
+        // printf("--Master Log Successful--\n");
     }
     else
     {
@@ -244,61 +235,13 @@ static void i2c_test_task(void *arg)
     {
         ESP_LOGI(TAG, "test cnt: %d", cnt++);
 
-        // Delay for some time.
-        // vTaskDelay(DELAY_TIME_BETWEEN_ITEMS_MS / portTICK_RATE_MS);
-
-        // Read in data
-        // xSemaphoreTake(print_mux, portMAX_DELAY);
-        // master_read_func(data_rd);
-        // xSemaphoreGive(print_mux);
-
-        // Delay for some time.
-        // vTaskDelay(DELAY_TIME_BETWEEN_ITEMS_MS / portTICK_RATE_MS);
-
-        // ALL COMMANDS ARE JUST A SINGLE HEX (aka 8 bits)
-        // Bit 1: Always a 1, a sort of "start".
-        // Bit 2: Address 06
-        // Bit 3: Address 05
-        // Bit 4: Address 04
-        // Bit 5: Address 03
-        // Bit 6: Address 0
-        // Bit 7: Address 01
-        // Bit 8: R/W (0 is write, 1 is read)
-
-        // 0x85
-        // uint8_t read_msg = 0b10000101;
-
-        // Msg 1 is the addresss, with a LOW on the R/W bit.
-        // 0x84
-        // uint8_t write_msg_1 = 0b10000100;
-        // Msg 2 is the register, currently assigned to Shunt Voltage.
-        // uint8_t write_msg_2 = 0x01;
-
-        // Just Read
-        // data_wr[0] = 0x85;
-
-        // Set register
-        // data_wr[0] = 0x84;
-        // data_wr[1] = 0x02;
-
-        // Write to the slave.
-        // handle_master_write_slave(data_wr, 1);
-
         // Shunt Voltage
-        vTaskDelay(250 / portTICK_RATE_MS);
-        get_shunt(data_wr, data_rd);
+        vTaskDelay(100 / portTICK_RATE_MS);
+        printf("Shunt Voltage: %x\n", get_shunt(data_wr, data_rd));
 
         // Bus Voltage
-        vTaskDelay(250 / portTICK_RATE_MS);
-        get_bus(data_wr, data_rd);
-
-        // Power
-        // vTaskDelay(250 / portTICK_RATE_MS);
-        // get_power(data_wr, data_rd);
-
-        // Current
-        // vTaskDelay(250 / portTICK_RATE_MS);
-        // get_current(data_wr, data_rd);
+        vTaskDelay(100 / portTICK_RATE_MS);
+        printf("Bus Voltage: %x\n", get_bus(data_wr, data_rd));
 
         // Delay for some time.
         vTaskDelay((DELAY_TIME_BETWEEN_ITEMS_MS * (task_idx + 1)) / portTICK_RATE_MS);
@@ -307,34 +250,34 @@ static void i2c_test_task(void *arg)
     vTaskDelete(NULL);
 }
 
-void get_shunt(uint8_t *data_wr, uint8_t *data_rd)
+int get_shunt(uint8_t *data_wr, uint8_t *data_rd)
 {
     vTaskDelay(250 / portTICK_RATE_MS);
     data_wr[0] = 0x01;
     handle_master_write_slave(data_wr, 1);
-    master_read_func(data_rd);
+    return master_read_func(data_rd);
 }
 
-void get_bus(uint8_t *data_wr, uint8_t *data_rd)
+int get_bus(uint8_t *data_wr, uint8_t *data_rd)
 {
     vTaskDelay(250 / portTICK_RATE_MS);
     data_wr[0] = 0x02;
     handle_master_write_slave(data_wr, 1);
-    master_read_func(data_rd);
+    return master_read_func(data_rd);
 }
 
-void get_power(uint8_t *data_wr, uint8_t *data_rd)
+int get_power(uint8_t *data_wr, uint8_t *data_rd)
 {
     data_wr[0] = 0x03;
     handle_master_write_slave(data_wr, 1);
-    master_read_func(data_rd);
+    return master_read_func(data_rd);
 }
 
-void get_current(uint8_t *data_wr, uint8_t *data_rd)
+int get_current(uint8_t *data_wr, uint8_t *data_rd)
 {
     data_wr[0] = 0x04;
     handle_master_write_slave(data_wr, 1);
-    master_read_func(data_rd);
+    return master_read_func(data_rd);
 }
 
 // Begin the FreeRTOS task "i2c_test_task"
