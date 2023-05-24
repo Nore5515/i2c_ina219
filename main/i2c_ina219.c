@@ -1,11 +1,9 @@
 /**
- * @file i2c_example_main.c
+ * @file i2c_ina219.c
  * @author noah reed (nore5515@gmail.com)
- * @brief
- * @version 0.1
+ * @brief slimmed down i2c master library for the ina219 current sensor.
+ * @version 0.2
  * @date 2023-05-16
- *
- * @copyright Copyright (c) 2023
  *
  */
 
@@ -15,7 +13,7 @@
 #include "driver/i2c.h"
 #include "sdkconfig.h"
 
-static const char *TAG = "i2c-example";
+static const char *TAG = "i2c-ina219";
 
 #define _I2C_NUMBER(num) I2C_NUM_##num
 #define I2C_NUMBER(num) _I2C_NUMBER(num)
@@ -24,10 +22,6 @@ static const char *TAG = "i2c-example";
 #define RW_TEST_LENGTH 128               /*!< Data length for r/w test, [0,DATA_LENGTH] */
 #define DELAY_TIME_BETWEEN_ITEMS_MS 5000 /*!< delay time between different test items */
 
-#define I2C_SLAVE_NUM I2C_NUMBER(CONFIG_I2C_SLAVE_PORT_NUM) /*!< I2C port number for slave dev */
-#define I2C_SLAVE_TX_BUF_LEN (2 * DATA_LENGTH)              /*!< I2C slave tx buffer size */
-#define I2C_SLAVE_RX_BUF_LEN (2 * DATA_LENGTH)              /*!< I2C slave rx buffer size */
-
 #define I2C_MASTER_SCL_IO CONFIG_I2C_MASTER_SCL               /*!< gpio number for I2C master clock */
 #define I2C_MASTER_SDA_IO CONFIG_I2C_MASTER_SDA               /*!< gpio number for I2C master data  */
 #define I2C_MASTER_NUM I2C_NUMBER(CONFIG_I2C_MASTER_PORT_NUM) /*!< I2C port number for master dev */
@@ -35,15 +29,13 @@ static const char *TAG = "i2c-example";
 #define I2C_MASTER_TX_BUF_DISABLE 0                           /*!< I2C master doesn't need buffer */
 #define I2C_MASTER_RX_BUF_DISABLE 0                           /*!< I2C master doesn't need buffer */
 
-#define ESP_SLAVE_ADDR CONFIG_I2C_SLAVE_ADDRESS /*!< ESP32 slave address, you can set any 7bit value */
+#define ESP_SLAVE_ADDR CONFIG_I2C_SLAVE_ADDRESS /*!< Slave address, you can set any 7bit value */
 #define WRITE_BIT I2C_MASTER_WRITE              /*!< I2C master write */
 #define READ_BIT I2C_MASTER_READ                /*!< I2C master read */
 #define ACK_CHECK_EN 0x1                        /*!< I2C master will check ack from slave*/
 #define ACK_CHECK_DIS 0x0                       /*!< I2C master will not check ack from slave */
 #define ACK_VAL 0x0                             /*!< I2C ack value */
 #define NACK_VAL 0x1                            /*!< I2C nack value */
-
-SemaphoreHandle_t print_mux = NULL;
 
 // Prototypes
 int get_current(uint8_t *data_wr, uint8_t *data_rd);
@@ -52,10 +44,12 @@ int get_shunt(uint8_t *data_wr, uint8_t *data_rd);
 int get_bus(uint8_t *data_wr, uint8_t *data_rd);
 
 /**
- * @brief test code to read esp-i2c-slave
- * _______________________________________________________________________________________
- * | start | slave_addr + rd_bit +ack | read n-1 bytes + ack | read 1 byte + nack | stop |
- * --------|--------------------------|----------------------|--------------------|------|
+ * @brief Read from slave. Fills 'data_rd'.
+ *
+ * @param i2c_num
+ * @param data_rd
+ * @param size
+ * @return esp_err_t
  */
 static esp_err_t i2c_master_read_slave(i2c_port_t i2c_num, uint8_t *data_rd, size_t size)
 {
@@ -78,11 +72,12 @@ static esp_err_t i2c_master_read_slave(i2c_port_t i2c_num, uint8_t *data_rd, siz
 }
 
 /**
- * @brief Test code to write esp-i2c-slave
- *        Master device write data to slave.
- * ___________________________________________________________________
- * | start | slave_addr + wr_bit + ack | write n bytes + ack  | stop |
- * --------|---------------------------|----------------------|------|
+ * @brief Writing to slave.
+ *
+ * @param i2c_num
+ * @param data_wr
+ * @param size
+ * @return esp_err_t
  */
 static esp_err_t i2c_master_write_slave(i2c_port_t i2c_num, uint8_t *data_wr, size_t size)
 {
@@ -137,7 +132,7 @@ static void disp_buf(uint8_t *buf, int len)
 }
 
 /**
- * @brief Shifts an array of hexes right once.
+ * @brief Shifts an array of bytes to the right, 'shift' number of times.
  *
  * @param array
  * @param length
@@ -185,6 +180,7 @@ int master_read_func(uint8_t *data_rd)
         master_read_ret = i2c_master_read_slave(I2C_MASTER_NUM, data_rd, RW_TEST_LENGTH);
     }
 
+    // Status Handling.
     if (master_read_ret == ESP_ERR_TIMEOUT)
     {
         ESP_LOGE(TAG, "I2C Timeout");
@@ -195,9 +191,7 @@ int master_read_func(uint8_t *data_rd)
         extractedData[0] = data_rd[0];
         extractedData[1] = data_rd[1];
         shiftArrayRight(extractedData, 2, 3);
-        // disp_buf(extractedData, 2);
         int little_endian = (extractedData[0] << 8) | extractedData[1];
-        // printf("Decimal Val: %d\n", little_endian);
         return little_endian;
     }
     else
@@ -224,7 +218,7 @@ void handle_master_write_slave(uint8_t *data_wr, int len)
     }
 }
 
-static void i2c_test_task(void *arg)
+static void i2c_demo_task(void *arg)
 {
     uint32_t task_idx = (uint32_t)arg;
     // int i = 0;
@@ -246,33 +240,36 @@ static void i2c_test_task(void *arg)
         // Delay for some time.
         vTaskDelay((DELAY_TIME_BETWEEN_ITEMS_MS * (task_idx + 1)) / portTICK_RATE_MS);
     }
-    vSemaphoreDelete(print_mux);
     vTaskDelete(NULL);
 }
 
+//
+//   ╔══════════════════════════════════════════════╗
+// ╔══════════════════════════════════════════════════╗
+// ║                                                  ║
+// ║  Four main get functions                         ║
+// ║                                                  ║
+// ╚══════════════════════════════════════════════════╝
+//   ╚══════════════════════════════════════════════╝
+//
 int get_shunt(uint8_t *data_wr, uint8_t *data_rd)
 {
-    vTaskDelay(250 / portTICK_RATE_MS);
     data_wr[0] = 0x01;
     handle_master_write_slave(data_wr, 1);
     return master_read_func(data_rd);
 }
-
 int get_bus(uint8_t *data_wr, uint8_t *data_rd)
 {
-    vTaskDelay(250 / portTICK_RATE_MS);
     data_wr[0] = 0x02;
     handle_master_write_slave(data_wr, 1);
     return master_read_func(data_rd);
 }
-
 int get_power(uint8_t *data_wr, uint8_t *data_rd)
 {
     data_wr[0] = 0x03;
     handle_master_write_slave(data_wr, 1);
     return master_read_func(data_rd);
 }
-
 int get_current(uint8_t *data_wr, uint8_t *data_rd)
 {
     data_wr[0] = 0x04;
@@ -280,10 +277,9 @@ int get_current(uint8_t *data_wr, uint8_t *data_rd)
     return master_read_func(data_rd);
 }
 
-// Begin the FreeRTOS task "i2c_test_task"
+// Begin the FreeRTOS task "i2c_demo_task"
 void app_main(void)
 {
-    print_mux = xSemaphoreCreateMutex();
     ESP_ERROR_CHECK(i2c_master_init());
-    xTaskCreate(i2c_test_task, "i2c_test_task_0", 1024 * 2, (void *)0, 10, NULL);
+    xTaskCreate(i2c_demo_task, "i2c_demo_task_0", 1024 * 2, (void *)0, 10, NULL);
 }
