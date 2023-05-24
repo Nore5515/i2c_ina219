@@ -198,6 +198,7 @@ int master_read_func(uint8_t *data_rd)
     {
         ESP_LOGW(TAG, " %s: Master read slave error, IO not connected...\n", esp_err_to_name(master_read_ret));
     }
+
     return -1;
 }
 
@@ -210,7 +211,8 @@ void handle_master_write_slave(uint8_t *data_wr, int len)
     }
     else if (ret == ESP_OK)
     {
-        // printf("--Master Log Successful--\n");
+        // Commented for verbosity.
+        // ESP_LOGI(TAG, "Write successful!");
     }
     else
     {
@@ -231,11 +233,19 @@ static void i2c_demo_task(void *arg)
 
         // Shunt Voltage
         vTaskDelay(100 / portTICK_RATE_MS);
-        printf("Shunt Voltage: %x\n", get_shunt(data_wr, data_rd));
+        printf("Shunt Voltage: %d\n", get_shunt(data_wr, data_rd));
 
         // Bus Voltage
         vTaskDelay(100 / portTICK_RATE_MS);
-        printf("Bus Voltage: %x\n", get_bus(data_wr, data_rd));
+        printf("Bus Voltage: %d\n", get_bus(data_wr, data_rd));
+
+        // Power
+        vTaskDelay(100 / portTICK_RATE_MS);
+        printf("Power: %d\n", get_power(data_wr, data_rd));
+
+        // Current
+        vTaskDelay(100 / portTICK_RATE_MS);
+        printf("Curent: %d\n", get_current(data_wr, data_rd));
 
         // Delay for some time.
         vTaskDelay((DELAY_TIME_BETWEEN_ITEMS_MS * (task_idx + 1)) / portTICK_RATE_MS);
