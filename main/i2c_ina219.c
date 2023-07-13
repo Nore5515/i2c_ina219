@@ -192,6 +192,7 @@ int master_read_func(uint8_t *data_rd)
         extractedData[1] = data_rd[1];
         shiftArrayRight(extractedData, 2, 3);
         int little_endian = (extractedData[0] << 8) | extractedData[1];
+        free(extractedData);
         return little_endian;
     }
     else
